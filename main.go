@@ -2,7 +2,11 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -31,6 +35,13 @@ func main() {
 	//	log.Fatalln(err)
 	//}
 	//log.Println(item2)
+
+	dsn := os.Getenv("DB_CONNECTION")
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalln("failed to connect database")
+	}
+	log.Println("Connected to database ... ", db)
 
 	r := gin.Default()
 
