@@ -13,12 +13,14 @@ type CreateTodoBiz struct {
 	store createTodoStorage
 }
 
+// Init Biz
 func NewCreateTodoBiz(store createTodoStorage) *CreateTodoBiz {
 	return &CreateTodoBiz{
 		store: store,
 	}
 }
 
+// Ad
 func (b *CreateTodoBiz) CreateNewTodo(ctx context.Context, item *model.TodoCreation) error {
 	if err := item.Validate(); err != nil {
 		return err

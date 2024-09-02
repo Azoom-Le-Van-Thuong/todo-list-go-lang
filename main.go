@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"todo-api/common"
 	ginitem "todo-api/modules/item/transport/gin"
 )
@@ -53,11 +52,11 @@ func main() {
 	v1 := r.Group("/api/v1")
 	{
 		items := v1.Group("/items")
-		items.GET("/", ListItem(db))
+		items.GET("/", ginitem.GetListTodo(db))
 		items.POST("/", ginitem.CreateTodo(db))
 		items.GET("/:id", ginitem.GetTodo(db))
-		items.PATCH("/:id", func(c *gin.Context) {})
-		items.DELETE("/:id", DeleteItem(db))
+		items.PATCH("/:id", ginitem.UpdateTodoById(db))
+		items.DELETE("/:id", ginitem.DeleteItemById(db))
 
 	}
 	r.GET("/ping", func(c *gin.Context) {
@@ -70,31 +69,6 @@ func main() {
 
 //TIP See GoLand help at <a href="https://www.jetbrains.com/help/go/">jetbrains.com/help/go/</a>.
 // Also, you can try interactive lessons for GoLand by selecting 'Help | Learn IDE Features' from the main menu.
-
-func DeleteItem(db *gorm.DB) func(ctx *gin.Context) {
-	return func(ctx *gin.Context) {
-
-		id, err := strconv.Atoi(ctx.Param("id"))
-		if err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		var item Todo
-		if err := db.Where("id = ?", id).First(&item, id).Error; err != nil {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-
-		}
-
-		if err := db.Table(Todo{}.TableName()).Where("id = ?", id).Updates(map[string]interface{}{
-			"status": "DELETED",
-		}).Error; err != nil {
-			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.JSON(http.StatusOK, common.SimpleSuccessResponse(true))
-	}
-}
 
 func ListItem(db *gorm.DB) func(ctx *gin.Context) {
 	return func(ctx *gin.Context) {
