@@ -7,16 +7,20 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
+	"strconv"
+	"todo-api/common"
+	ginitem "todo-api/modules/item/transport/gin"
 )
 
 type Todo struct {
-	Id          int        `json:"id,omitempty"`
-	Title       string     `json:"title,omitempty"`
-	Description string     `json:"description,omitempty"`
-	Status      string     `json:"status,omitempty"`
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
-	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	common.SQLModel
+	Title       string `json:"title,omitempty" gorm:"column:title"`
+	Description string `json:"description,omitempty" gorm:"column:description"`
+	Status      string `json:"status,omitempty" gorm:"column:status"`
+}
+
+func (Todo) TableName() string {
+	return "todo"
 }
 
 func main() {
@@ -38,6 +42,7 @@ func main() {
 
 	dsn := os.Getenv("DB_CONNECTION")
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db = db.Debug()
 	if err != nil {
 		log.Fatalln("failed to connect database")
 	}
@@ -48,15 +53,11 @@ func main() {
 	v1 := r.Group("/api/v1")
 	{
 		items := v1.Group("/items")
-		items.GET("/", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "GET items",
-			})
-		})
-		items.POST("/", func(c *gin.Context) {})
-		items.GET("/:id", func(c *gin.Context) {})
+		items.GET("/", ListItem(db))
+		items.POST("/", ginitem.CreateTodo(db))
+		items.GET("/:id", ginitem.GetTodo(db))
 		items.PATCH("/:id", func(c *gin.Context) {})
-		items.DELETE("/:id", func(c *gin.Context) {})
+		items.DELETE("/:id", DeleteItem(db))
 
 	}
 	r.GET("/ping", func(c *gin.Context) {
@@ -64,8 +65,62 @@ func main() {
 			"message": "pong",
 		})
 	})
-	r.Run() // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+	r.Run("0.0.0.0:5005") // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 }
 
 //TIP See GoLand help at <a href="https://www.jetbrains.com/help/go/">jetbrains.com/help/go/</a>.
 // Also, you can try interactive lessons for GoLand by selecting 'Help | Learn IDE Features' from the main menu.
+
+func DeleteItem(db *gorm.DB) func(ctx *gin.Context) {
+	return func(ctx *gin.Context) {
+
+		id, err := strconv.Atoi(ctx.Param("id"))
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		var item Todo
+		if err := db.Where("id = ?", id).First(&item, id).Error; err != nil {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+
+		}
+
+		if err := db.Table(Todo{}.TableName()).Where("id = ?", id).Updates(map[string]interface{}{
+			"status": "DELETED",
+		}).Error; err != nil {
+			ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusOK, common.SimpleSuccessResponse(true))
+	}
+}
+
+func ListItem(db *gorm.DB) func(ctx *gin.Context) {
+	return func(ctx *gin.Context) {
+
+		// should by parse paging
+		var paging common.Paging
+		if err := ctx.ShouldBind(&paging); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		paging.Process()
+		if err := db.Table(Todo{}.TableName()).Select("id").Count(&paging.Total).Error; err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+
+		}
+		var items []Todo
+		offset := (paging.Page - 1) * paging.Limit
+		if err := db.
+			Table(Todo{}.TableName()).
+			Order("id desc").
+			Offset(offset).Limit(paging.Limit).
+			Find(&items).Error; err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.JSON(http.StatusOK, common.NewSuccessResponse(items, nil, paging))
+	}
+}
